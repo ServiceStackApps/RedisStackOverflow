@@ -1,0 +1,483 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>ServiceStack Redis StackOverflow</title>
+
+    <link href="Content/Css/default.css" rel="stylesheet" type="text/css" />
+    <script type="text/javascript" src="http://code.jquery.com/jquery-1.5.1.min.js"></script>
+
+    <script type="text/javascript">
+        $(function ()
+        {
+            var authUser, userStats, siteStats, qSource = "questions", qLabel = defaultLabel = "Latest Questions";
+
+            $.ajaxSetup({ cache: false });
+
+            $(document).click(function (e)
+            {
+                var el = e.target;
+                if (!el.getAttribute("data-cmd")) return;
+                qSource = el.getAttribute("data-cmd");
+                qLabel = el.getAttribute("data-label");
+                if (e.ctrlKey || e.shiftKey)
+                {
+                    window.open(getFrag(qSource, qLabel));
+                    return;
+                }
+                if (el.className == "del")
+                {
+                    $.ajax({
+                        type: 'delete',
+                        url: qSource,
+                        success: function ()
+                        {
+                            qLabel = defaultLabel;
+                            qSource = "questions";
+                            refresh();
+                        }
+                    });
+                }
+                else
+                {
+                    refresh();
+                }
+            });
+
+            var ua = navigator.userAgent, iPhone = ua.indexOf("iPhone") >= 0, iPad = ua.indexOf("iPad") >= 0;
+            if (iPhone || iPad)
+            {
+                $("#footer").css({ position: "static", clear: "both", margin: "80px 0 -30px -18px" });
+            }
+
+            var defaultMessage = "Browse latest or login to ask a question";
+
+            var updateStatus = function (message, className)
+            {
+                var sb = className
+                    ? '<b class="' + className + '">'
+                    : '<b>';
+                $("#status H4").html(sb + message + '</b>');
+            };
+
+            var updateUserStatus = function (message, className)
+            {
+                var sb = className
+                    ? '<span class="' + className + '">'
+                    : '<span>';
+                $("#user H4").html(sb + message + '</span>');
+            };
+
+            updateStatus(defaultMessage);
+
+            var fromDtoDate = function (dateStr)
+            {
+                return new Date(parseFloat(/Date\(([^)]+)\)/.exec(dateStr)[1]));
+            };
+            var toTwitterTime = function (a)
+            {
+                var b = new Date();
+                var c = typeof a == "date" ? a : new Date(a);
+                var d = b - c;
+                var e = 1000, minute = e * 60, hour = minute * 60, day = hour * 24, week = day * 7;
+                if (isNaN(d) || d < 0) { return ""; }
+                if (d < e * 7) { return "right now"; }
+                if (d < minute) { return Math.floor(d / e) + " secs ago"; }
+                if (d < minute * 2) { return "about 1 min ago"; }
+                if (d < hour) { return Math.floor(d / minute) + " mins ago"; }
+                if (d < hour * 2) { return "about 1 hour ago"; }
+                if (d < day) { return Math.floor(d / hour) + " hours ago"; }
+                if (d > day && d < day * 2) { return "yesterday"; }
+                if (d < day * 365) { return Math.floor(d / day) + " days ago"; } else { return "over a year ago" }
+            };
+
+            function enc(html)
+            {
+                if (typeof html != "string") return html;
+                return html.replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;');
+            }
+            function getFrag(qSource, qLabel)
+            {
+                return "#!" + qSource + "/" + encodeURIComponent(qLabel.replace(/ /g, '_'));
+            }
+
+            function refresh(callback, skipPushState)
+            {
+                if (!skipPushState && window.history.pushState)
+                {
+                    window.history.pushState({ qSource: qSource, qLabel: qLabel }, qLabel, getFrag(qSource, qLabel));
+                }
+
+                var asyncCount = 0;
+                if (authUser)
+                {
+                    asyncCount++;
+                    $.getJSON("users/" + authUser.Id + "/stats", function (r)
+                    {
+                        userStats = r.Result;
+                        var msg = "You have "
+                            + '<em data-cmd="users/' + authUser.Id + '/questions" data-label="Questions by '
+                                + enc(authUser.DisplayName) + '">asked ' + userStats.QuestionsCount
+                            + '</em> and have answered <em>' + userStats.AnswersCount + '</em> questions';
+                        updateUserStatus(msg);
+                        if (--asyncCount == 0 && callback) callback();
+                    });
+                }
+                asyncCount++;
+                $.getJSON("stats", function (r)
+                {
+                    siteStats = r.Result;
+                    var msg = 'This site has '
+                        + '<em data-cmd="questions" data-label="Latest Questions">' + siteStats.QuestionsCount + ' questions</em>'
+                        + ' and <em>' + siteStats.AnswersCount + '</em> answers';
+                    updateStatus(msg);
+
+                    var tags = '';
+                    $.each(siteStats.TopTags, function (i, tag)
+                    {
+                        var eTag = enc(tag.Name);
+                        tags += '<dd><span class="tag" data-cmd="questions/tagged/' + eTag
+                              + '" data-label="Questions tagged with ' + eTag + '">'
+                              + eTag + '</span><strong>x' + tag.Score + '</strong></dd>';
+                    });
+
+                    var pages = "";
+                    var pageCount = Math.ceil(siteStats.QuestionsCount / 10);
+                    for (var pageNo = 0; pageNo < pageCount; pageNo++)
+                    {
+                        pages += '<span class="page" data-cmd="questions/page/' + pageNo + '"'
+                               + ' data-label="All Questions - page ' + (pageNo + 1) + '/' + pageCount + '">'
+                               + (pageNo + 1) + '</span>';
+                    }
+                    $("#paging").html(pages);
+
+                    $("#toptags DL").html(tags);
+
+                    if (--asyncCount == 0 && callback) callback();
+                });
+
+                var getTags = function (q)
+                {
+                    var tags = "";
+                    $.each(q.Tags, function (i, tag)
+                    {
+                        var encTag = enc(tag);
+                        tags += '<b class="tag" data-cmd="questions/tagged/' + encTag
+                              + '" data-label="Questions tagged with ' + encTag + '">'
+                              + encTag + '</b>';
+                    });
+                    return tags;
+                };
+
+                $("#questions H2").html(qLabel);
+                var encodedUrl = qSource.replace('#', '%23');
+                var viewSingleQuestion = qSource.indexOf('questions/') === 0 && qSource.split("/").length == 2;
+                if (viewSingleQuestion)
+                {
+
+                    asyncCount++;
+                    $.getJSON(encodedUrl, function (r)
+                    {
+                        var q = r.Result.Question;
+                        var votes = r.Result.VotesUpCount - r.Result.VotesDownCount;
+                        var tags = getTags(q);
+
+                        var answers = "";
+                        var answerCount = r.Result.Answers.length, answerText = answerCount + " Answer";
+                        if (answerCount != 1) answerText += "s";
+                        $.each(r.Result.Answers, function (i, ar)
+                        {
+                            var u = ar.User;
+                            var date = fromDtoDate(ar.Answer.CreatedDate);
+                            answers += '<div class="answer">'
+                                    + enc(ar.Answer.Content).replace("\n", "<br />\n")
+                                    + '<div class="by">'
+                                    + "<i data-cmd='users/" + u.Id + "/questions' data-label='Questions by "
+                                    + enc(u.DisplayName) + "'>by " + enc(u.DisplayName) + "</i>"
+                                    + '<em>' + toTwitterTime(date) + '</em>'
+                                    + '<br />'
+                                    + '</div>'
+                                    + '</div>';
+                        });
+
+                        var sb = ''
+                            + '<div id="question">'
+                                + '<div class="ib question-votes">'
+                                + '<b class="up" />'
+                                + '<h4>' + votes + '</h4>'
+                                + '<b class="down" />'
+                                + '</div>'
+                                + "<b class='del' data-cmd='questions/" + q.Id + "'></b>"
+                            + '<div class="ib question-content">' + enc(q.Content).replace("\n", "<br />\n") + '</div>'
+                            + '<div class="tags">' + tags + '</div>'
+                            + '<div id="question-answers">'
+                            + '<h3>' + enc(answerText) + '</h3>'
+                            + answers
+                            + '</div>'
+                            + '<div id="your-answer">'
+                            + '<h3>Your Answer</h3>'
+                            + '<textarea></textarea>'
+                            + '<button>Post Your Answer</button>'
+                            + '</div>'
+                            + '</div>';
+
+                        $("#results").html(sb);
+
+                        $(".question-votes B").click(function ()
+                        {
+                            var dir = $(this).hasClass("up") ? "up" : "down";
+                            $.post("users/" + authUser.Id + "/questionvotes/" + q.Id, { Direction: dir }, function (r)
+                            {
+                                refresh(function ()
+                                {
+                                    $(".question-votes B").removeClass("user-selected");
+                                    $(".question-votes B." + dir).addClass("user-selected");
+                                });
+                            });
+                        });
+
+                        $("#your-answer BUTTON").click(function ()
+                        {
+                            var answer = $("#your-answer TEXTAREA").val();
+
+                            $.post("answers", { QuestionId: q.Id, UserId: authUser.Id, Content: answer }, function (r)
+                            {
+                                refresh();
+                            });
+                        });
+
+                        if (--asyncCount == 0 && callback) callback();
+                    });
+                    return;
+                }
+
+                asyncCount++;
+                $.getJSON(encodedUrl, function (r)
+                {
+                    var sb = "";
+                    var userNameMap = {};
+
+                    $.each(r.Results, function (i, r)
+                    {
+                        var q = r.Question, u = r.User;
+                        var date = fromDtoDate(q.CreatedDate);
+
+                        var aCls = r.AnswersCount > 0 ? "answered" : "unanswered";
+                        var aText = r.AnswersCount == 1 ? "answer" : "answers";
+                        var tags = getTags(q);
+
+                        sb += '<div class="question">'
+                            + '<dl class="votes ib"><dt>' + (r.VotesUpCount - r.VotesDownCount) + '</dt><dd>votes</dd></dl>'
+                            + '<dl class="status ib ' + aCls + '"><dt>' + r.AnswersCount + '</dt><dd>' + aText + '</dd></dl>'
+                            + '<div class="ib">'
+                            + '<h4 data-cmd="questions/' + q.Id + '" data-label="' + enc(q.Title) + '">' + enc(q.Title) + '</h4>'
+                            + '<div class="by">'
+                            + '<i data-cmd="users/' + u.Id + '/questions" data-label="Questions by '
+                                + enc(u.DisplayName) + '">by ' + enc(u.DisplayName) + '</i>'
+                            + '<em>' + toTwitterTime(date.toUTCString()) + '</em>'
+                            + '</div>'
+                            + '<div class="tags">' + tags + '</div>'
+                            + '</div>'
+                            + '</div>';
+                    });
+
+                    $("#results").html(sb);
+
+                    if (--asyncCount == 0 && callback) callback();
+                });
+            };
+
+            window.onpopstate = function (e)
+            {
+                e = e || event;
+                if (!e.state) return;
+                qSource = e.state.qSource;
+                qLabel = e.state.qLabel;
+                refresh(null, true);
+            };
+
+            var hash = location.hash.indexOf('#!') === 0 && location.hash.substr(2);
+            if (hash)
+            {
+                var parts = hash.split('/');
+                qLabel = parts.length == 1 ? qLabel : decodeURIComponent(parts.pop()).replace(/_/g, ' ');
+                qSource = parts.join('/');
+            }
+
+            if (window.localStorage)
+            {
+                authUser = localStorage.getItem("authUser");
+                try
+                {
+                    if (typeof authUser == "string") authUser = $.parseJSON(authUser);
+                } catch (e) { authUser = null; }
+            }
+            if (authUser) loginUser(authUser.DisplayName);
+            refresh();
+
+            $("#user A#login").attr('href', 'javascript:void(0)');
+            $("#user A#login").click(function ()
+            {
+                var logoutUser = this.innerHTML == "logout";
+                if (logoutUser)
+                {
+                    authUser = null;
+                    $("#user B, #user H4, #add").hide();
+                    $("#user A#login").html("login");
+                    if (window.localStorage) localStorage.removeItem("authUser");
+                    return;
+                }
+                var randUsers = "mythz,James,John,Robert,Michael,William,David,Charles,Joseph,Thomas".split(',');
+                var randUser = randUsers[Math.floor(Math.random() * randUsers.length)];
+                var userName = prompt("Login with your User Name", randUser);
+                if (userName)
+                {
+                    loginUser(userName);
+                    $.post("users", { DisplayName: userName }, function (r)
+                    {
+                        authUser = r.Result;
+                        if (window.localStorage) localStorage.setItem("authUser", JSON.stringify(authUser));
+                        refresh();
+                    }, 'json');
+                }
+            });
+
+            function loginUser(userName)
+            {
+                $("#add INPUT, #add TEXTAREA").val('');
+                $("#user B, #user H4, #add").show();
+                $("#user B").html("Welcome, " + userName);
+                $("#user A#login").html("logout");
+            }
+
+            var addQuestion = function ()
+            {
+                var title = $("#qtitle").val(), body = $("#qbody").val(), tags = $("#qtags").val();
+
+                $("#add INPUT, #add TEXTAREA").removeClass('error');
+                if (!title) $("#qtitle").addClass('error');
+                if (!body) $("#qbody").addClass('error');
+                var invalidTags = !tags || /[&\<\>]/.test(tags);
+                if (invalidTags) $("#qtags").addClass('error');
+
+                if (!title || !body || invalidTags) return;
+
+                var dtoTags = tags.split(/[,; ]/).join(",");
+
+                $("#add INPUT, #add TEXTAREA").val('');
+
+                $.post("questions", { UserId: authUser.Id, Title: title, Content: body, Tags: dtoTags }, refresh);
+            };
+            $("#add BUTTON").click(addQuestion);
+
+
+        });
+    </script>
+
+</head>
+<body>
+
+    <a href="https://github.com/ServiceStackApps" style="display:block;position:absolute;top:5px;left:10px;"><img src="http://mono.servicestack.net/icon-home.jpg" alt="ServiceStack Home" /></a>
+
+    <a class="lnk-src" href="https://raw.githubusercontent.com/ServiceStack/Assets/master/img/apps/icon-home.jpg"><img src="Content/Images/btn-github.png" width="186" height="84" /></a>
+
+    <h1><a href="./">Redis StackOverflow</a></h1>
+
+    <div id="status"><h4></h4></div>
+
+    <div id="user">
+        <b></b>
+        <a id="login">login</a>
+
+        <h4></h4>
+
+        <div id="add">
+            <dl>
+                <dd><input id="qtitle" placeholder="what is your question?" /><i>*</i></dd>
+                <dd><textarea id="qbody" placeholder="body, easier to just copy one from StackOverflow"></textarea><i>*</i></dd>
+                <dd><input id="qtags" placeholder="at least one tag required" /><i>*</i></dd>
+                <dd><button>Ask Question</button></dd>
+            </dl>
+        </div>
+
+        <div id="toptags">
+            <h3>Top Tags</h3>
+            <dl></dl>
+        </div>
+
+        <div id="notes">
+            <h3>Application Features</h3>
+            <dl>
+                <dd>
+                    <a href="https://github.com/ServiceStack/ServiceStack.Examples/blob/master/src/RedisStackOverflow/RedisStackOverflow/default.htm">
+                        App uses only 1 static html page</a>
+                    using only jQuery
+                </dd>
+                <dd>
+                    Uses Redis for all data access.
+                    <a href="https://github.com/ServiceStack/ServiceStack.Examples/blob/master/src/RedisStackOverflow/RedisStackOverflow.ServiceInterface/IRepository.cs">
+                        Fits in 1 C# class</a>
+                </dd>
+                <dd>
+                    <a href="/RedisAdminUI/AjaxClient/">
+                        Use RedisAdminUI to see how data is stored Redis
+                    </a>
+                </dd>
+                <dd>
+                    Uses no other external .dlls apart from
+                    <a href="https://servicestack.net">ServiceStack</a>
+                </dd>
+                <dd>
+                    <a href="/metadata">Checkout the complete Web Services API</a>
+                </dd>
+                <dd>
+                    <a href="https://servicestack.net">Uses</a>
+                    <a href="http://redis.io">only</a>
+                    <a href="http://www.mono-project.com">OSS</a>
+                    <a href="http://wiki.nginx.org">software</a>
+                    <a href="http://jquery.com">and is</a>
+                    freely available at:
+                </dd>
+            </dl>
+
+        </div>
+    </div>
+
+    <div id="questions">
+        <h2></h2>
+        <div id="results"></div>
+        <div id="paging"></div>
+        <a id="mono" href="http://www.mono-project.com"><img src="Content/Images/Mono-powered-big.png" alt="Powered by Mono" /></a>
+        <div id="disclaimer">*Not affiliated with Stack Overflow, which is a trademark of Stack Overflow Internet Services Inc.</div>
+        <div id="trivia" class="ib"><strong>Trivia:</strong> Its fast despite each <b>click</b> making <b>3 ajax</b> calls causing <b>30+ redis</b> operations</div>
+    </div>
+
+    <div id="footer">
+        Simple StackOverlow-like Ajax website using only <a href="http://jquery.com">jQuery</a> for UI,
+        calling <a href="https://servicestack.net">Service Stack's</a> REST-ful web services,
+        powered entirely by <a href="http://redis.io">Redis</a>
+        on <a href="http://www.mono-project.com">Mono</a>.<br />
+
+        Takes advantage of
+        <a href="http://redis.io/commands#string">STRING</a>,
+        <a href="http://redis.io/commands#set">SET</a> and
+        <a href="http://redis.io/commands#sorted_set">SORTED SET</a>
+        data structures in
+        <a href="http://redis.io">Redis</a>
+        to provide effectively,
+        the fastest implementation of a StackOverflow-like website.
+    </div>
+
+
+<script type="text/javascript">
+  var _gaq = _gaq || [];
+  _gaq.push(['_setAccount', 'UA-7722718-7']);
+  _gaq.push(['_trackPageview']);
+
+  (function() {
+    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+  })();
+</script>
+</body>
+</html>
