@@ -56,9 +56,6 @@ namespace RedisStackOverflow.ServiceInterface
             questions.AddRange(RestQuestions.Map(kvp => ToQuestion(kvp.Key, kvp.Value, new List<string> { "rest", "http" })));
             questions.AddRange(JavascriptQuestions.Map(kvp => ToQuestion(kvp.Key, kvp.Value, new List<string> { "javascript", "jquery" })));
 
-
-            RedisManager.Exec(r => r.FlushAll());
-
             var mythz = Repository.GetOrCreateUser(new User { DisplayName = "mythz" });
             questions.ForEach(q => q.UserId = mythz.Id);
 
