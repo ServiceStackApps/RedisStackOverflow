@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
+using System.Collections.Generic;
 using RedisStackOverflow.ServiceModel;
 using ServiceStack;
 using ServiceStack.Redis;
@@ -53,34 +53,34 @@ namespace RedisStackOverflow.ServiceInterface
         //Definition of all the redis keys that are used for indexes
         static class TagIndex
         {
-            public static string Questions(string tag) { return "urn:tags>q:" + tag.ToLower(); }
-            public static string All { get { return "urn:tags"; } }
+            public static string Questions(string tag) => "urn:tags>q:" + tag.ToLower();
+            public static string All => "urn:tags";
         }
 
         static class QuestionUserIndex
         {
-            public static string UpVotes(long questionId) { return "urn:q>user+:" + questionId; }
-            public static string DownVotes(long questionId) { return "urn:q>user-:" + questionId; }
+            public static string UpVotes(long questionId) => "urn:q>user+:" + questionId;
+            public static string DownVotes(long questionId) => "urn:q>user-:" + questionId;
         }
 
         static class UserQuestionIndex
         {
-            public static string Questions(long userId) { return "urn:user>q:" + userId; }
-            public static string UpVotes(long userId) { return "urn:user>q+:" + userId; }
-            public static string DownVotes(long userId) { return "urn:user>q-:" + userId; }
+            public static string Questions(long userId) => "urn:user>q:" + userId;
+            public static string UpVotes(long userId) => "urn:user>q+:" + userId;
+            public static string DownVotes(long userId) => "urn:user>q-:" + userId;
         }
 
         static class AnswerUserIndex
         {
-            public static string UpVotes(long answerId) { return "urn:a>user+:" + answerId; }
-            public static string DownVotes(long answerId) { return "urn:a>user-:" + answerId; }
+            public static string UpVotes(long answerId) => "urn:a>user+:" + answerId;
+            public static string DownVotes(long answerId) => "urn:a>user-:" + answerId;
         }
 
         static class UserAnswerIndex
         {
-            public static string Answers(long userId) { return "urn:user>a:" + userId; }
-            public static string UpVotes(long userId) { return "urn:user>a+:" + userId; }
-            public static string DownVotes(long userId) { return "urn:user>a-:" + userId; }
+            public static string Answers(long userId) => "urn:user>a:" + userId;
+            public static string UpVotes(long userId) => "urn:user>a+:" + userId;
+            public static string DownVotes(long userId) => "urn:user>a-:" + userId;
         }
 
         /// <summary>
@@ -100,78 +100,66 @@ namespace RedisStackOverflow.ServiceInterface
 
             var userIdAliasKey = "id:User:DisplayName:" + user.DisplayName.ToLower();
 
-            using (var redis = RedisManager.GetClient())
-            {
-                //Get a typed version of redis client that works with <User>
-                var redisUsers = redis.As<User>();
+            using var redis = RedisManager.GetClient();
+            //Get a typed version of redis client that works with <User>
+            var redisUsers = redis.As<User>();
 
-                //Find user by DisplayName if exists
-                var userKey = redis.GetValue(userIdAliasKey);
-                if (userKey != null)
-                    return redisUsers.GetValue(userKey);
+            //Find user by DisplayName if exists
+            var userKey = redis.GetValue(userIdAliasKey);
+            if (userKey != null)
+                return redisUsers.GetValue(userKey);
 
-                //Generate Id for New User
-                if (user.Id == default(long))
-                    user.Id = redisUsers.GetNextSequence();
+            //Generate Id for New User
+            if (user.Id == default(long))
+                user.Id = redisUsers.GetNextSequence();
 
-                redisUsers.Store(user);
+            redisUsers.Store(user);
 
-                //Save reference to User key using the DisplayName alias
-                redis.SetValue(userIdAliasKey, user.CreateUrn());
+            //Save reference to User key using the DisplayName alias
+            redis.SetValue(userIdAliasKey, user.CreateUrn());
 
-                return redisUsers.GetById(user.Id);
-            }
+            return redisUsers.GetById(user.Id);
         }
 
         public UserStat GetUserStats(long userId)
         {
-            using (var redis = RedisManager.GetClient())
+            using var redis = RedisManager.GetClient();
+            return new UserStat
             {
-                return new UserStat
-                {
-                    UserId = userId,
-                    QuestionsCount = redis.GetSetCount(UserQuestionIndex.Questions(userId)),
-                    AnswersCount = redis.GetSetCount(UserAnswerIndex.Answers(userId)),
-                };
-            }
+                UserId = userId,
+                QuestionsCount = redis.GetSetCount(UserQuestionIndex.Questions(userId)),
+                AnswersCount = redis.GetSetCount(UserAnswerIndex.Answers(userId)),
+            };
         }
 
-        public List<Question> GetAllQuestions()
-        {
-            return RedisManager.ExecAs<Question>(redisQuestions => redisQuestions.GetAll()).ToList();
-        }
+        public List<Question> GetAllQuestions() => 
+            RedisManager.ExecAs<Question>(redisQuestions => redisQuestions.GetAll()).ToList();
 
         public List<QuestionResult> GetRecentQuestionResults(int skip, int take)
         {
-            using (var redis = RedisManager.GetReadOnlyClient())
-            {
-                return ToQuestionResults(redis.As<Question>().GetLatestFromRecentsList(skip, take));
-            }
+            using var redis = RedisManager.GetReadOnlyClient();
+            return ToQuestionResults(redis.As<Question>().GetLatestFromRecentsList(skip, take));
         }
 
         public List<QuestionResult> GetQuestionsByUser(long userId)
         {
-            using (var redis = RedisManager.GetReadOnlyClient())
-            {
-                var questionIds = redis.GetAllItemsFromSet(UserQuestionIndex.Questions(userId));
-                var questions = redis.As<Question>().GetByIds(questionIds);
-                return ToQuestionResults(questions);
-            }
+            using var redis = RedisManager.GetReadOnlyClient();
+            var questionIds = redis.GetAllItemsFromSet(UserQuestionIndex.Questions(userId));
+            var questions = redis.As<Question>().GetByIds(questionIds);
+            return ToQuestionResults(questions);
         }
 
         public List<QuestionResult> GetQuestionsTaggedWith(string tagName)
         {
-            using (var redis = RedisManager.GetReadOnlyClient())
-            {
-                var questionIds = redis.GetAllItemsFromSet(TagIndex.Questions(tagName));
-                var questions = redis.As<Question>().GetByIds(questionIds);
-                return ToQuestionResults(questions);
-            }
+            using var redis = RedisManager.GetReadOnlyClient();
+            var questionIds = redis.GetAllItemsFromSet(TagIndex.Questions(tagName));
+            var questions = redis.As<Question>().GetByIds(questionIds);
+            return ToQuestionResults(questions);
         }
 
         private List<QuestionResult> ToQuestionResults(IEnumerable<Question> questions)
         {
-            var uniqueUserIds = questions.Map(x => x.UserId).ToHashSet();
+            var uniqueUserIds = new HashSet<long>(questions.Map(x => x.UserId));
             var usersMap = GetUsersByIds(uniqueUserIds).ToDictionary(x => x.Id);
 
             var results = questions.Map(x => new QuestionResult { Question = x });
@@ -206,52 +194,48 @@ namespace RedisStackOverflow.ServiceInterface
         /// <param name="questionId"></param>
         public void DeleteQuestion(long questionId)
         {
-            using (var redis = RedisManager.GetClient())
-            {
-                var redisQuestions = redis.As<Question>();
+            using var redis = RedisManager.GetClient();
+            var redisQuestions = redis.As<Question>();
 
-                var question = redisQuestions.GetById(questionId);
-                if (question == null) return;
+            var question = redisQuestions.GetById(questionId);
+            if (question == null) return;
                 
-                //decrement score in tags list
-                question.Tags.ForEach(tag => redis.IncrementItemInSortedSet(TagIndex.All, tag, -1));
+            //decrement score in tags list
+            question.Tags.ForEach(tag => redis.IncrementItemInSortedSet(TagIndex.All, tag, -1));
 
-                //remove all related answers
-                redisQuestions.DeleteRelatedEntities<Answer>(questionId);
+            //remove all related answers
+            redisQuestions.DeleteRelatedEntities<Answer>(questionId);
 
-                //remove this question from user index
-                redis.RemoveItemFromSet(UserQuestionIndex.Questions(question.UserId), questionId.ToString());
+            //remove this question from user index
+            redis.RemoveItemFromSet(UserQuestionIndex.Questions(question.UserId), questionId.ToString());
 
-                //remove tag => questions index for each tag
-                question.Tags.ForEach(tag => redis.RemoveItemFromSet(TagIndex.Questions(tag), questionId.ToString()));
+            //remove tag => questions index for each tag
+            question.Tags.ForEach(tag => redis.RemoveItemFromSet(TagIndex.Questions(tag), questionId.ToString()));
 
-                redisQuestions.DeleteById(questionId);
-            }
+            redisQuestions.DeleteById(questionId);
         }
 
         public void StoreQuestion(Question question)
         {
-            using (var redis = RedisManager.GetClient())
+            using var redis = RedisManager.GetClient();
+            var redisQuestions = redis.As<Question>();
+
+            if (question.Tags == null) question.Tags = new List<string>();
+            if (question.Id == default(long))
             {
-                var redisQuestions = redis.As<Question>();
+                question.Id = redisQuestions.GetNextSequence();
+                question.CreatedDate = DateTime.UtcNow;
 
-                if (question.Tags == null) question.Tags = new List<string>();
-                if (question.Id == default(long))
-                {
-                    question.Id = redisQuestions.GetNextSequence();
-                    question.CreatedDate = DateTime.UtcNow;
-
-                    //Increment the popularity for each new question tag
-                    question.Tags.ForEach(tag => redis.IncrementItemInSortedSet(TagIndex.All, tag, 1));
-                }
-
-                redisQuestions.Store(question);
-                redisQuestions.AddToRecentsList(question);
-                redis.AddItemToSet(UserQuestionIndex.Questions(question.UserId), question.Id.ToString());
-
-                //Populate tag => questions index for each tag
-                question.Tags.ForEach(tag => redis.AddItemToSet(TagIndex.Questions(tag), question.Id.ToString()));
+                //Increment the popularity for each new question tag
+                question.Tags.ForEach(tag => redis.IncrementItemInSortedSet(TagIndex.All, tag, 1));
             }
+
+            redisQuestions.Store(question);
+            redisQuestions.AddToRecentsList(question);
+            redis.AddItemToSet(UserQuestionIndex.Questions(question.UserId), question.Id.ToString());
+
+            //Populate tag => questions index for each tag
+            question.Tags.ForEach(tag => redis.AddItemToSet(TagIndex.Questions(tag), question.Id.ToString()));
         }
 
         /// <summary>
@@ -261,41 +245,35 @@ namespace RedisStackOverflow.ServiceInterface
         /// <param name="answerId"></param>
         public void DeleteAnswer(long questionId, long answerId)
         {
-            using (var redis = RedisManager.GetClient())
-            {
-                var answer = redis.As<Question>().GetRelatedEntities<Answer>(questionId).FirstOrDefault(x => x.Id == answerId);
-                if (answer == null) return;
+            using var redis = RedisManager.GetClient();
+            var answer = redis.As<Question>().GetRelatedEntities<Answer>(questionId).FirstOrDefault(x => x.Id == answerId);
+            if (answer == null) return;
                 
-                redis.As<Question>().DeleteRelatedEntity<Answer>(questionId, answerId);
+            redis.As<Question>().DeleteRelatedEntity<Answer>(questionId, answerId);
                 
-                //remove user => answer index
-                redis.RemoveItemFromSet(UserAnswerIndex.Answers(answer.UserId), answerId.ToString());
-            }
+            //remove user => answer index
+            redis.RemoveItemFromSet(UserAnswerIndex.Answers(answer.UserId), answerId.ToString());
         }
 
         public void StoreAnswer(Answer answer)
         {
-            using (var redis = RedisManager.GetClient())
+            using var redis = RedisManager.GetClient();
+            if (answer.Id == default(long))
             {
-                if (answer.Id == default(long))
-                {
-                    answer.Id = redis.As<Answer>().GetNextSequence();
-                    answer.CreatedDate = DateTime.UtcNow;
-                }
-
-                //Store as a 'Related Answer' to the parent Question
-                redis.As<Question>().StoreRelatedEntities(answer.QuestionId, answer);
-                //Populate user => answer index
-                redis.AddItemToSet(UserAnswerIndex.Answers(answer.UserId), answer.Id.ToString());
+                answer.Id = redis.As<Answer>().GetNextSequence();
+                answer.CreatedDate = DateTime.UtcNow;
             }
+
+            //Store as a 'Related Answer' to the parent Question
+            redis.As<Question>().StoreRelatedEntities(answer.QuestionId, answer);
+            //Populate user => answer index
+            redis.AddItemToSet(UserAnswerIndex.Answers(answer.UserId), answer.Id.ToString());
         }
 
         public List<Answer> GetAnswersForQuestion(long questionId)
         {
-            using (var redis = RedisManager.GetClient())
-            {
-                return redis.As<Question>().GetRelatedEntities<Answer>(questionId);
-            }
+            using var redis = RedisManager.GetClient();
+            return redis.As<Question>().GetRelatedEntities<Answer>(questionId);
         }
 
         public void VoteQuestionUp(long userId, long questionId)
@@ -365,7 +343,7 @@ namespace RedisStackOverflow.ServiceInterface
 
             var result = ToQuestionResults(new[] { question })[0];
             var answers = GetAnswersForQuestion(questionId);
-            var uniqueUserIds = answers.ConvertAll(x => x.UserId).ToHashSet();
+            var uniqueUserIds = new HashSet<long>(answers.Select(x => x.UserId));
             var usersMap = GetUsersByIds(uniqueUserIds).ToDictionary(x => x.Id);
 
             result.Answers = answers.ConvertAll(answer =>
@@ -374,46 +352,38 @@ namespace RedisStackOverflow.ServiceInterface
             return result;
         }
 
-        public List<User> GetUsersByIds(IEnumerable<long> userIds)
-        {
-            return RedisManager.ExecAs<User>(redisUsers => redisUsers.GetByIds(userIds)).ToList();
-        }
+        public List<User> GetUsersByIds(IEnumerable<long> userIds) => 
+            RedisManager.ExecAs<User>(redisUsers => redisUsers.GetByIds(userIds)).ToList();
 
         public QuestionStat GetQuestionStats(long questionId)
         {
-            using (var redis = RedisManager.GetReadOnlyClient())
+            using var redis = RedisManager.GetReadOnlyClient();
+            var result = new QuestionStat
             {
-                var result = new QuestionStat
-                {
-                    VotesUpCount = redis.GetSetCount(QuestionUserIndex.UpVotes(questionId)),
-                    VotesDownCount = redis.GetSetCount(QuestionUserIndex.DownVotes(questionId))
-                };
-                result.VotesTotal = result.VotesUpCount - result.VotesDownCount;
-                return result;
-            }
+                VotesUpCount = redis.GetSetCount(QuestionUserIndex.UpVotes(questionId)),
+                VotesDownCount = redis.GetSetCount(QuestionUserIndex.DownVotes(questionId))
+            };
+            result.VotesTotal = result.VotesUpCount - result.VotesDownCount;
+            return result;
         }
 
         public List<Tag> GetTagsByPopularity(int skip, int take)
         {
-            using (var redis = RedisManager.GetReadOnlyClient())
-            {
-                var tagEntries = redis.GetRangeWithScoresFromSortedSetDesc(TagIndex.All, skip, take);
-                var tags = tagEntries.Map(kvp => new Tag { Name = kvp.Key, Score = (int)kvp.Value });
-                return tags;
-            }
+            using var redis = RedisManager.GetReadOnlyClient();
+            var tagEntries = redis.GetRangeWithScoresFromSortedSetDesc(TagIndex.All, skip, take);
+            var tags = tagEntries.Map(kvp => new Tag { Name = kvp.Key, Score = (int)kvp.Value });
+            return tags;
         }
 
         public SiteStats GetSiteStats()
         {
-            using (var redis = RedisManager.GetClient())
+            using var redis = RedisManager.GetClient();
+            return new SiteStats
             {
-                return new SiteStats
-                {
-                    QuestionsCount = redis.As<Question>().TypeIdsSet.Count,
-                    AnswersCount = redis.As<Answer>().TypeIdsSet.Count,
-                    TopTags = GetTagsByPopularity(0, 10)
-                };
-            }
+                QuestionsCount = redis.As<Question>().TypeIdsSet.Count,
+                AnswersCount = redis.As<Answer>().TypeIdsSet.Count,
+                TopTags = GetTagsByPopularity(0, 10)
+            };
         }
     }
 }
